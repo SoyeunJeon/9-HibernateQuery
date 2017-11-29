@@ -8,7 +8,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.hibernate4.HibernateTransactionManager;
 import org.springframework.orm.hibernate4.LocalSessionFactoryBean;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
-import rmit.service.PersonService;
+import rmit.service.CourseService;
 
 
 import java.util.Properties;
@@ -22,9 +22,10 @@ import java.util.Properties;
 public class AppConfig {
 
     @Bean
-    public PersonService personService(){
-        return new PersonService();
+    public CourseService courseService(){
+        return new CourseService();
     }
+
 
     @Bean
     public LocalSessionFactoryBean sessionFactory(){
