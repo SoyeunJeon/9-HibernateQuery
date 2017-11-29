@@ -1,90 +1,114 @@
-# HelloHibernateAnnotation
-This is a hello world example that demonstrate the usage of Hibernate and Spring using Annotation. I simplify this project with minimal configuration.
+Hibernate query
+Querying in Hibernate is quite complicated topic. Hibernate is powerful enough to offer flexible query mechanisms to fit our need. We use use a variety of methods to query data from our database. 
 
-1. Create a maven project using IntelliJ IDEA
-2. In the pom.xml we will need to add the following dependencies:
-+ spring-context: will provide us with @Configuration, @Bean
-+ spring-orm: will provide us with LocalSessionFactoryBean, HibernateTransationManager
-+ spring-tx: will need for transaction management @EnableTransationManager or @Transactional
-+ hibernate-core: not sure why we need it? :-) 
-+ postgresql or hsqldb (if we want to use in-memory db)
+Given the following classes:
 
-3. Similar to HelloSpringAnnotation project we need a configuration class that handles all beans declaration. We name it AppConfig.java and annotates it with 2 annotations: @Configuration, @EnableTransactionManagement
-- @Configuration: to say that this is a class that contains @Beans
-- @EnableTransactionManagement: there will be a transactionManager bean in this class
+        @Entity
+        public class Answer {
 
-4. In AppConfig.java, we have to define a very important bean namely sessionFactory. This is the key to any Hibernate-Spring application. 
-To construct this bean, Spring need the following properties:
-+ dataSource: we have to specify driverClassName (what db), url (what db name), username, password
-+ hibernateProperties: not very important info, we can skip but we may need hibernate.hbm2ddl=create-drop to automatically create tables in db
-+ packageToScan: this will tell Spring where to look for entity class
+           @Id
+           @Column
+           @GeneratedValue(strategy = GenerationType.IDENTITY)
+           private int id;
 
-        @Bean
-        public LocalSessionFactoryBean sessionFactory(){
+           @Column
+           private String answer;
 
-            Properties properties = new Properties();
-            properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
-            properties.put("hibernate.show_sql", true);
-            properties.put("hibernate.hbm2ddl.auto", "create-drop");
+           @ManyToOne
+           private Question question;
 
-            DriverManagerDataSource dataSource = new DriverManagerDataSource();
-
-            //To use postgresql
-            dataSource.setDriverClassName("org.postgresql.Driver");
-            dataSource.setUrl("jdbc:postgresql://localhost:5432/hello");
-            dataSource.setUsername("postgres");
-            dataSource.setPassword("rmit");
-
-            LocalSessionFactoryBean sessionFactoryBean = new LocalSessionFactoryBean();
-            sessionFactoryBean.setDataSource(dataSource);
-
-            sessionFactoryBean.setHibernateProperties(properties);
-            sessionFactoryBean.setPackagesToScan("rmit.entity");
-
-
-            return  sessionFactoryBean;
+           @Column
+           private boolean isCorrectAnswer;
         }
 
-5. The rest is very easy, we have a bean namely PersonService that has a dependency to sessionFactory. That is why we have to set @Autowire. We also need to annotate this class with @Transational as it is related to sessionFactory.
 
-        @Transactional
-        public class PersonService {
+        @Entity
+        public class Question {
 
-            @Autowired
-            private SessionFactory sessionFactory;
+           @Id
+           @Column
+           @GeneratedValue(strategy = GenerationType.IDENTITY)
+           private int id;
 
-            public void setSessionFactory(SessionFactory sessionFactory) {
-                this.sessionFactory = sessionFactory;
-            }
+           @Column
+           private String question;
 
-            public void savePerson(Person person){
-                sessionFactory.getCurrentSession().save(person);
-            }
-        }
+           @OneToMany(mappedBy = "question")
+           @Cascade(CascadeType.ALL)
+           private List<Answer> answerList = new ArrayList<Answer>();
 
-6. It is now ready to get a PersonService bean and start to use it:
+           public void addAnswer(String answer, boolean isCorrect){
+
+               Answer answer1 = new Answer();
+               answer1.setAnswer(answer);
+               answer1.setCorrectAnswer(isCorrect);
+               answer1.setQuestion(this);
+
+               answerList.add(answer1);
+           }
+
+Criteria interface
+This is the simplest method to query data using Hibernate.  For example, to query all questions with a specific content:
+
+                public List<Question> findQuestions(String search){
+                   return sessionFactory.getCurrentSession().createCriteria(Question.class)
+                           .add(Restrictions.like("question", search, MatchMode.ANYWHERE))
+                           .list();
+                }
+
+We create a criteria and add to the criteria different Restriction. We can restrict result with like, eq, gt, lt etc. 
+
+The limitation of this method is that we can only query, not update data. There are also some problems with performance. 
+
+Direct SQL language (SQL)
+
+This method does not leverage anything from ORM. Basically, you must write tedious SQL statements. 
+
+                public List<Question> findQuestions3(String search){
+                   return sessionFactory.getCurrentSession().createSQLQuery("select * from question where question like '%"+search+"%'")
+                           .list();
+                }
+
+There is also problem with SQL Injection when using this method. 
+
+Hibernate query language (HQL)
+
+The recommended method is HQL. It is flexible and powerful. The following example illustrates a join between Question and Answer class. We try to find all questions that have content and answers that match a search condition. HQL allows us to join a class with a collection without having to specify the join condition. 
+
+                public List<Question> findQuestions2(String search){
+                   return sessionFactory.getCurrentSession()
+                           .createQuery("from Question as q inner join q.answerList as a where q.question like:question or a.answer like:answer ")
+                           .setString("question", "%"+search+"%")
+                           .setString("answer", "%"+search+"%")
+                           .list();
+                }
+For querying the other end, it is even easy as we do not need any join:
+
+                public List<Answer> findAnswers(String search){
+                   return sessionFactory.getCurrentSession()
+                           .createQuery("from Answer as a where a.question.question like:question or a.answer like:answer ")
+                           .setString("question", "%"+search+"%")
+                           .setString("answer", "%"+search+"%")
+                           .list();
+                }
+
+The difference between the two examples is the first returns an question object that contains a list of answer while the second returns a collection of answers. (And each answer has a property that links to a question).
+
+How to call the method in main:
 
         public static void main(String[] args){
 
-            AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(AppConfig.class);
+           AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(AppConfig.class);
 
-            PersonService personService = (PersonService) context.getBean("personService");
+           CourseService courseService = (CourseService) context.getBean("courseService");
 
-            Person person = new Person();
-            person.setName("Hien");
+           Question question = new Question();
+           question.setQuestion("How are you?");
+           question.addAnswer("I am fine", false);
+           question.addAnswer("I am bad", false);
+           question.addAnswer("I am ok", true);
 
-            personService.savePerson(person);
+           courseService.addQuestion(question);
 
+           System.out.println(courseService.findAnswers("I").size());
         }
-
-Special notes:
-- We can externalize the dataSource properties by using Environtment bean and a properties file. For simplicity, I have removed it and hardcoded it by actual string
-- We can define dataSource and hibernateProperties as beans but I personally don't think it is useful
-- In PersonService class, we can add other CRUD methods such as update, get, getAll, delete etc. 
-- Usually, we need to make PersonService as an interface and implement it by creating a class such as PersonServiceImpl or PersonServiceHibernate etc. 
-
-
-
-
-
-
